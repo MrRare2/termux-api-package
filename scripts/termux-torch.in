@@ -3,26 +3,71 @@ set -e -u
 
 SCRIPTNAME=termux-torch
 
-show_usage () {
-	echo "Usage: $SCRIPTNAME [on | off]"
-	echo "Toggle LED Torch on device"
-	exit 1
+show_usage() {
+    echo "Usage: $SCRIPTNAME [on | off] [-i torch-id]"
+    echo "Toggle LED Torch on device"
+    echo "  -i torch-id  ID of the torch to use (see termux-camera-info), default: 0"
+    exit 1
 }
 
-if [ "$#" -ne 1 ]; then
-	echo "Illegal param count"
-	show_usage
+if [ "$#" -lt 1 ]; then
+    echo "$SCRIPTNAME: missing arguments"
+    show_usage
+fi
+
+if [ "$#" -gt 3 ]; then
+    echo "$SCRIPTNAME: too many arguments"
+    show_usage
 fi
 
 PARAMS=""
+TORCH_ID="0"
 
-if [ "$1" = on ]; then
-	PARAMS="--ez enabled true"
-elif [ "$1" = off ]; then
-	PARAMS="--ez enabled false"
-else
-	echo "Illegal parameter: $1"
-	show_usage
+# Parse arguments
+MODE=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        on)
+            if [ -n "$MODE" ]; then
+                echo "$SCRIPTNAME: too many arguments"
+                show_usage
+            fi
+            MODE="on"
+            PARAMS="--ez enabled true"
+            ;;
+        off)
+            if [ -n "$MODE" ]; then
+                echo "$SCRIPTNAME: too many arguments"
+                show_usage
+            fi
+            MODE="off"
+            PARAMS="--ez enabled false"
+            ;;
+        -i)
+            shift
+            if [ -z "${1:-}" ]; then
+                echo "$SCRIPTNAME: missing value for -i"
+                show_usage
+            fi
+            TORCH_ID=$1
+            ;;
+        -h)
+            show_usage
+            ;;
+        *)
+            echo "$SCRIPTNAME: illegal parameter: $1"
+            show_usage
+            ;;
+    esac
+    shift
+done
+
+if [ -z "$MODE" ]; then
+    show_usage
+fi
+
+if [ "$TORCH_ID" != "0" ]; then
+    PARAMS="$PARAMS --es torch_id $TORCH_ID"
 fi
 
 @TERMUX_PREFIX@/libexec/termux-api Torch $PARAMS
