@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/endian.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -22,7 +22,7 @@
 
 #include "termux-api.h"
 
-#define TERMUX_API_PACKAGE_VERSION "0.59.0"
+#define TERMUX_API_PACKAGE_VERSION "0.59.1"
 
 #ifndef PREFIX
 # define PREFIX "/data/data/com.termux/files/usr"
@@ -246,8 +246,19 @@ _Noreturn void exec_am_broadcast(int argc, char** argv,
     // Close stdin:
     close(STDIN_FILENO);
 
-    int const extra_args = 15; // Including ending NULL.
-    char** child_argv = malloc((sizeof(char*)) * (argc + extra_args));
+    const int child_pre_argc = 14;
+    const int child_post_argc = argc - 1; // Except `argv[0]`.
+    const int child_argc = child_pre_argc + child_post_argc;
+
+    size_t child_argv_size = (sizeof(char*)) * (child_argc + 1); // Including trailing `NULL`.
+    // Do not directly cast, otherwise can trigger null pointer dereference if `NULL` is returned.
+    void* result = malloc(child_argv_size);
+    if (result == NULL) {
+        perror("malloc failed for am child args");
+        exit(1);
+    }
+
+    char **child_argv = (char **) result;
 
     child_argv[0] = "am";
     child_argv[1] = "broadcast";
@@ -264,17 +275,18 @@ _Noreturn void exec_am_broadcast(int argc, char** argv,
     child_argv[11] = input_address_string;
     child_argv[12] = "--es";
     child_argv[13] = "api_method";
-    child_argv[14] = argv[1];
 
-    // Copy the remaining arguments -2 for first binary and second api name:
-    memcpy(child_argv + extra_args, argv + 2, (argc-1) * sizeof(char*));
+    // Copy the remaining arguments except `argv[0]`, `argv[1]` should be `api_method` extra value:
+    memcpy(child_argv + child_pre_argc, argv + 1, child_post_argc * sizeof(char*));
 
     // End with NULL:
-    child_argv[argc + extra_args - 1] = NULL;
+    child_argv[child_argc] = NULL;
 
     // Use an a executable taking care of PATH and LD_LIBRARY_PATH:
     execv(PREFIX "/bin/am", child_argv);
 
+    // We should not reach here, if we do, then free memory we malloc'ed
+    free(child_argv);
     perror("execv(\"" PREFIX "/bin/am\")");
     exit(1);
 }
